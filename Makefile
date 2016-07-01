@@ -1,6 +1,6 @@
 CC           = gcc
-CFLAGS       = -g -Wall
-DEPENDENCIES = Delegator.cpp main.cpp
+CFLAGS       = -g
+DEPENDENCIES = ImageProcessor.cpp Delegator.cpp main.cpp
 LINKS        = -lpthread -lstdc++
 
 all:

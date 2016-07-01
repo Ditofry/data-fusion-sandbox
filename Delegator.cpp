@@ -20,6 +20,7 @@
 
 std::vector<int> connections;
 int image_count = 0;
+long lazy_inc = 0;
 
 Delegator::Delegator(){
   puts("New delegator created.  Perhaps a rename is in order?");
@@ -141,15 +142,17 @@ void *Delegator::connection_handler(void *socket_desc) {
       cv::Mat frame(cv::imdecode(data_mat,1));
 
       // build image path/name
-      
+      std::string filenameString = "framCapture" + std::to_string(lazy_inc) + ".png";
+      std::string rel_path = "stitched_images/" + filenameString;
 
       try {
-        cv::imwrite("stitch_frames/savedImg.png", frame);
+        cv::imwrite(rel_path, frame);
       } catch (std::runtime_error& ex) {
         fprintf(stderr, "Exception converting image to PNG format: %s\n", ex.what());
       }
 
       image_count++;
+      lazy_inc++; // possible race condition
 
       if (image_count == connections.size()) {
         /* stitch images */
