@@ -15,8 +15,11 @@
 #include <algorithm> // std::reverse, can be ditched soon.
 #include <string>
 #include <iostream>
+#include <string>
+#include <opencv2/opencv.hpp>
 
 std::vector<int> connections;
+int image_count = 0;
 
 Delegator::Delegator(){
   puts("New delegator created.  Perhaps a rename is in order?");
@@ -85,41 +88,103 @@ void *Delegator::tcp_listener(void *i) {
   }
 }
 
+/*
+* - convert vector to hash table ** (and then track when removed)
+* - get request message and then get byte array
+* - convert byte array into bitmap and save (store in memory?)
+* - trigger image stitching at right time
+* - stitch images and save stitched image
+* - bring this all over to QT.... fck
+* - make sure shit is as simple as possible for qmake
+*/
+
 void *Delegator::connection_handler(void *socket_desc) {
-    //Get the socket descriptor
-    int sock = *(int*)socket_desc;
-    int read_size;
-    char *message, client_message[90000];
-    connections.push_back(sock);
+  //Get the socket descriptor
+  int sock = *(int*)socket_desc;
+  int read_size;
+  char *message, client_message[1000];
+  long byteStreamLimit;
+  bool expectingImage = false; // TODO: This will change with Protocol Buffers
+  connections.push_back(sock);
 
-    //Send some messages to the client
-    message = "Greetings! I am your connection handler\n";
-    write(sock , message , strlen(message));
+  //Send some messages to the client
+  // message = "Greetings! I am your connection handler\n";
+  // write(sock , message , strlen(message));
+  //
+  // message = "Now type something and i shall reverse it \n";
+  // write(sock , message , strlen(message));
 
-    message = "Now type something and i shall reverse it \n";
-    write(sock , message , strlen(message));
+  //Receive messages from client
+  while( true ){
+    puts("while ran");
+    if (expectingImage){
+      puts("Now we're expecting an image");
+      expectingImage = false;
+      unsigned char imageBytes[byteStreamLimit];
+      puts("Array declared");
+      std::cout << "we will read size of " << byteStreamLimit << std::endl;
+      read_size = recv(sock , imageBytes , byteStreamLimit , 0);
+      // Handle read failure
+      if(read_size == 0) { // TODO: DRY this up.  Put it in a function and call it here and in previous if block
+          puts("Client disconnected");
+          fflush(stdout);
+          break;
+      } else if (read_size == -1) {
+          perror("recv failed");
+          break;
+      }
+      puts("time to convert!");
+      // Char array to vec
+      std::vector<unsigned char> byteVec(imageBytes, imageBytes + byteStreamLimit);
 
-    //Receive a message from client
-    while( (read_size = recv(sock , client_message , 90000 , 0)) > 0){
-        //end of string marker
-        client_message[read_size] = '\0';
+      cv::Mat data_mat(byteVec,true);
+      cv::Mat frame(cv::imdecode(data_mat,1));
 
-        //Send the message back to client
-        std::reverse( client_message, &client_message[ strlen( client_message ) ] );
-        write(sock , client_message , strlen(client_message));
+      // build image path/name
+      
 
-        //clear the message buffer
-        memset(client_message, 0, 90000);
+      try {
+        cv::imwrite("stitch_frames/savedImg.png", frame);
+      } catch (std::runtime_error& ex) {
+        fprintf(stderr, "Exception converting image to PNG format: %s\n", ex.what());
+      }
+
+      image_count++;
+
+      if (image_count == connections.size()) {
+        /* stitch images */
+      }
+
+    } else {
+      read_size = recv(sock , client_message , 1000 , 0);
+      puts("We're expecting a normal message");
+      // Handle read failure
+      if(read_size == 0) { // TODO: DRY this up.  Put it in a function and call it here and in previous if block
+          puts("Client disconnected");
+          fflush(stdout);
+          break;
+      } else if (read_size == -1) {
+          perror("recv failed");
+          break;
+      }
+      std::cout << "the client message is: " << client_message << std::endl;
+      // Handle generic messages
+      if(!strstr(client_message, "SendingFrame")){ // should probably implement a message library to handle strings
+        perror("Couldn't parse: strstr  (163)");
+        write(sock , "couldn't parse" , 14);
+        continue;
+      }
+
+      // Parse bufferlength from client. e.g. py call: "SendingFrame,%d\n"
+      std::string msg(client_message);
+      byteStreamLimit = std::stol(msg.substr(msg.find(",") + 1));
+      expectingImage = true;
+      std::cout << "waiting for image of size " << byteStreamLimit << std::endl;
+
+      //clear the message buffer
+      memset(client_message, 0, 1000);
     }
-
-    if(read_size == 0) {
-        puts("Client disconnected");
-        fflush(stdout);
-    } else if (read_size == -1) {
-        perror("recv failed");
-    }
-
-    return 0;
+  }
 }
 
 void Delegator::tcp_image_poll(){
