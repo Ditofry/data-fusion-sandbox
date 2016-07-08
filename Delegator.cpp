@@ -21,7 +21,7 @@
 #include <mutex>
 
 std::vector<int> connections;
-std::mutex mut;
+// std::mutex mut;
 int image_count = 0;
 long image_id = 0;
 
@@ -34,11 +34,11 @@ void Delegator::error(const char *msg){
   exit(1);
 }
 
-string Delegator::thread_safe_file_name(std::string prefix, std::string extension){
-    mut.lock();
-    std::string name = prefix + to_string(image_id) + extension;
+std::string Delegator::thread_safe_file_name(std::string prefix, std::string extension){
+    std::string name = prefix + std::to_string(image_id) + extension;
     image_id++;
-    mut.unlock();
+    image_count++; // TODO: this should be called after the try block in the image save, but it needs a mutex
+    return name;
 }
 
 void Delegator::spawn_tcp_listener() {
@@ -141,26 +141,23 @@ void *Delegator::connection_handler(void *socket_desc) {
       cv::Mat data_mat(byteVec,true);
       cv::Mat frame(cv::imdecode(data_mat,1));
 
-      int iRand;
+      // int iRand;
 
-      srand(time(NULL));
-      iRand = rand() % 100000;
+      // srand(time(NULL));
+      // iRand = rand() % 100000;
 
       // build image path/name
-      std::string filenameString = thread_safe_file_name("stitchedImage",".png");
+      std::string filenameString = "stitchedImage" + std::to_string(sock) + ".png";
       std::string rel_path = "stitched_images/" + filenameString;
-
+      std::cout << "The file path is::: " << rel_path << std::endl;
       try {
         cv::imwrite(rel_path, frame);
       } catch (std::runtime_error& ex) {
         fprintf(stderr, "Exception converting image to PNG format: %s\n", ex.what());
       }
 
-      image_count++;
-      lazy_inc++; // possible race condition
-
       // clear buffer
-      // memset(imageBytes, 0, byteStreamLimit);
+      memset(imageBytes, 0, byteStreamLimit);
       if (image_count == connections.size()) {
         /* stitch images */
       }
