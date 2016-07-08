@@ -17,10 +17,13 @@
 #include <iostream>
 #include <string>
 #include <opencv2/opencv.hpp>
+#include <time.h> // potentially replaced by mutex
+#include <mutex>
 
 std::vector<int> connections;
+std::mutex mut;
 int image_count = 0;
-long lazy_inc = 0;
+long image_id = 0;
 
 Delegator::Delegator(){
   puts("New delegator created.  Perhaps a rename is in order?");
@@ -29,6 +32,13 @@ Delegator::Delegator(){
 void Delegator::error(const char *msg){
   perror(msg);
   exit(1);
+}
+
+string Delegator::thread_safe_file_name(std::string prefix, std::string extension){
+    mut.lock();
+    std::string name = prefix + to_string(image_id) + extension;
+    image_id++;
+    mut.unlock();
 }
 
 void Delegator::spawn_tcp_listener() {
@@ -89,18 +99,8 @@ void *Delegator::tcp_listener(void *i) {
   }
 }
 
-/*
-* - convert vector to hash table ** (and then track when removed)
-* - get request message and then get byte array
-* - convert byte array into bitmap and save (store in memory?)
-* - trigger image stitching at right time
-* - stitch images and save stitched image
-* - bring this all over to QT.... fck
-* - make sure shit is as simple as possible for qmake
-*/
-
 void *Delegator::connection_handler(void *socket_desc) {
-  //Get the socket descriptor
+  // Get the socket descriptor
   int sock = *(int*)socket_desc;
   int read_size;
   char *message, client_message[1000];
@@ -141,8 +141,13 @@ void *Delegator::connection_handler(void *socket_desc) {
       cv::Mat data_mat(byteVec,true);
       cv::Mat frame(cv::imdecode(data_mat,1));
 
+      int iRand;
+
+      srand(time(NULL));
+      iRand = rand() % 100000;
+
       // build image path/name
-      std::string filenameString = "framCapture" + std::to_string(lazy_inc) + ".png";
+      std::string filenameString = thread_safe_file_name("stitchedImage",".png");
       std::string rel_path = "stitched_images/" + filenameString;
 
       try {
@@ -154,6 +159,8 @@ void *Delegator::connection_handler(void *socket_desc) {
       image_count++;
       lazy_inc++; // possible race condition
 
+      // clear buffer
+      // memset(imageBytes, 0, byteStreamLimit);
       if (image_count == connections.size()) {
         /* stitch images */
       }

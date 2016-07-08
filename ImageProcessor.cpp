@@ -30,7 +30,7 @@ void ImageProcessor::stitchImages(const char *dirname){
     if (entry->d_name[0] != '.'){
       std::string filenameString(entry->d_name, 0, sizeof(entry->d_name));
       cout << "filename: " << entry->d_name << endl;
-      std::string rel_path = "stitch_frames/" + filenameString;
+      std::string rel_path = "collected_images/" + filenameString;
       imgs.push_back(imread(rel_path));
     }
   }
