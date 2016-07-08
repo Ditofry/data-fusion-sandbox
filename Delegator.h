@@ -15,7 +15,6 @@ public:
 
 private:
     bool listening;
-    static std::string thread_safe_file_name(std::string prefix, std::string extension);
     void error(const char *msg);
     static void *connection_handler(void *socket_desc);
     static void *tcp_listener(void *i);

@@ -21,7 +21,7 @@
 #include <mutex>
 
 std::vector<int> connections;
-// std::mutex mut;
+std::mutex mut;
 int image_count = 0;
 long image_id = 0;
 
@@ -32,13 +32,6 @@ Delegator::Delegator(){
 void Delegator::error(const char *msg){
   perror(msg);
   exit(1);
-}
-
-std::string Delegator::thread_safe_file_name(std::string prefix, std::string extension){
-    std::string name = prefix + std::to_string(image_id) + extension;
-    image_id++;
-    image_count++; // TODO: this should be called after the try block in the image save, but it needs a mutex
-    return name;
 }
 
 void Delegator::spawn_tcp_listener() {
@@ -63,6 +56,8 @@ void *Delegator::tcp_listener(void *i) {
 
   if (sock_fd == -1){
     printf("Could not create socket");
+  } else {
+    printf("Delegator is listening");
   }
 
   server.sin_family = AF_INET; // AF_INET == IPv4 Internet protocols.  We could be cool and go IPv6...
@@ -73,8 +68,6 @@ void *Delegator::tcp_listener(void *i) {
   if (bind(sock_fd,(struct sockaddr *)&server , sizeof(server)) < 0){
     perror("bind failed. Error");
   }
-
-  puts("bind done");
 
   // Mark socket as passive, ready to receive
   listen(sock_fd , 3);
@@ -108,23 +101,19 @@ void *Delegator::connection_handler(void *socket_desc) {
   bool expectingImage = false; // TODO: This will change with Protocol Buffers
   connections.push_back(sock);
 
-  //Send some messages to the client
-  // message = "Greetings! I am your connection handler\n";
-  // write(sock , message , strlen(message));
-  //
-  // message = "Now type something and i shall reverse it \n";
-  // write(sock , message , strlen(message));
-
-  //Receive messages from client
-  while( true ){
-    puts("while ran");
+  // Receive messages from client
+  while(true){
     if (expectingImage){
-      puts("Now we're expecting an image");
+      // Go back to listening for image size.
       expectingImage = false;
+
+      // Allocate now that we know exactly how big buffer should be
       unsigned char imageBytes[byteStreamLimit];
-      puts("Array declared");
-      std::cout << "we will read size of " << byteStreamLimit << std::endl;
+      std::cout << "reading byte stream of char * [" << byteStreamLimit << "]" << std::endl;
+
+      // wait to read in to buffer, stop reading once we hit buffer size
       read_size = recv(sock , imageBytes , byteStreamLimit , 0);
+
       // Handle read failure
       if(read_size == 0) { // TODO: DRY this up.  Put it in a function and call it here and in previous if block
           puts("Client disconnected");
@@ -134,23 +123,15 @@ void *Delegator::connection_handler(void *socket_desc) {
           perror("recv failed");
           break;
       }
-      puts("time to convert!");
-      // Char array to vec
-      std::vector<unsigned char> byteVec(imageBytes, imageBytes + byteStreamLimit);
 
+      // Build OpenCV img object in memory. Mat can take a byte vector as a constructor.
+      std::vector<unsigned char> byteVec(imageBytes, imageBytes + byteStreamLimit);
       cv::Mat data_mat(byteVec,true);
       cv::Mat frame(cv::imdecode(data_mat,1));
 
-      // int iRand;
-
-      // srand(time(NULL));
-      // iRand = rand() % 100000;
-
-      // build image path/name
-      std::string filenameString = "stitchedImage" + std::to_string(sock) + ".png";
-      std::string rel_path = "stitched_images/" + filenameString;
-      std::cout << "The file path is::: " << rel_path << std::endl;
+      // Save img object in memory to disk
       try {
+        std::string rel_path = "stitched_images/stitchedImage" + std::to_string(sock) + ".png";
         cv::imwrite(rel_path, frame);
       } catch (std::runtime_error& ex) {
         fprintf(stderr, "Exception converting image to PNG format: %s\n", ex.what());
@@ -158,13 +139,10 @@ void *Delegator::connection_handler(void *socket_desc) {
 
       // clear buffer
       memset(imageBytes, 0, byteStreamLimit);
-      if (image_count == connections.size()) {
-        /* stitch images */
-      }
 
     } else {
+      // We're parsing a small NULL-terminated string.  Buffer can be arbitrary small-ish size
       read_size = recv(sock , client_message , 1000 , 0);
-      puts("We're expecting a normal message");
       // Handle read failure
       if(read_size == 0) { // TODO: DRY this up.  Put it in a function and call it here and in previous if block
           puts("Client disconnected");
@@ -174,7 +152,7 @@ void *Delegator::connection_handler(void *socket_desc) {
           perror("recv failed");
           break;
       }
-      std::cout << "the client message is: " << client_message << std::endl;
+
       // Handle generic messages
       if(!strstr(client_message, "SendingFrame")){ // should probably implement a message library to handle strings
         perror("Couldn't parse: strstr  (163)");
@@ -182,7 +160,9 @@ void *Delegator::connection_handler(void *socket_desc) {
         continue;
       }
 
-      // Parse bufferlength from client. e.g. py call: "SendingFrame,%d\n"
+      std::cout << "client: " << client_message << std::endl;
+
+      // Parse bufferlength from client
       std::string msg(client_message);
       byteStreamLimit = std::stol(msg.substr(msg.find(",") + 1));
       expectingImage = true;
