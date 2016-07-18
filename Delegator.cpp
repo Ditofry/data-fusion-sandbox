@@ -19,6 +19,9 @@
 #include <opencv2/opencv.hpp>
 #include <time.h> // potentially replaced by mutex
 #include <mutex>
+#include "CVImage.capnp.h"
+#include <capnp/message.h>
+#include <capnp/serialize-packed.h>
 
 std::vector<int> connections;
 std::mutex mut;

@@ -1,6 +1,6 @@
-CC           = gcc
-CFLAGS       = -g
-DEPENDENCIES = ImageProcessor.cpp Delegator.cpp main.cpp
+CC           = clang++
+CFLAGS       = -g -std=c++11
+DEPENDENCIES = ImageProcessor.cpp Delegator.cpp CVImage.capnp.c++ main.cpp
 LINKS        = -lpthread -lstdc++
 
 all:
